@@ -1,247 +1,342 @@
 #!/usr/bin/env bash
-# Universal WhatsApp-for-Linux Installer Script by spontaneocus (Martin J. Keatings)
-# This script will install WhatsApp Web as a desktop application on your Linux system.
+# Universal WhatsApp-for-Linux Installer
+# Author: spontaneocus (aka Martin J. Keatings)
+# URL: https://github.com/martinkeat/Whatsapp-For-Linux/blob/main/install-whatsapp-nativefier.sh
 
-set -e  # exit immediately on error (we also manually check exits for critical steps)
+set -Eeuo pipefail
 
-# Function to print a bold, boxed message for status updates
-print_boxed() {
+# =========================
+# UI helpers
+# =========================
+bold() { printf "\e[1m%s\e[0m" "$*"; }
+box() {
   local msg="$1"
-  local cols=$(tput cols || echo 80)
-  local line=$(printf '%*s' "$cols" | tr ' ' '=')
-  echo -e "\e[1m${line}\e[0m"
-  # Center the message within the box if possible
-  local padding=$(( ($cols - ${#msg}) / 2 ))
-  if [ $padding -gt 0 ]; then
-    printf "\e[1m%*s%s%*s\e[0m\n" $padding "" "$msg" $padding ""
+  local width="${COLUMNS:-80}"
+  local line
+  line=$(printf '%*s' "$width" '' | tr ' ' '=')
+  echo
+  echo -e "$(bold "$line")"
+  # center message if shorter than line
+  local pad=$(( (width - ${#msg}) / 2 ))
+  if (( pad > 0 )); then
+    printf "\e[1m%*s%s%*s\e[0m\n" "$pad" "" "$msg" "$pad" ""
   else
-    # If message is longer than line (unlikely), just print it plainly
-    echo -e "\e[1m$msg\e[0m"
+    echo -e "$(bold "$msg")"
   fi
-  echo -e "\e[1m${line}\e[0m"
+  echo -e "$(bold "$line")"
 }
+ok()   { echo "✅ $*"; }
+warn() { echo "⚠️  $*"; }
+die()  { echo "❌ $*" >&2; exit 1; }
 
-# Detect Linux distribution from /etc/os-release
-distro="unknown"
+trap 'echo; box "An error occurred. See messages above."; exit 1' ERR
+
+# =========================
+# Detect distro and pkg mgr
+# =========================
+ID_LIKE_LOWER=""
+DISTRO_ID="unknown"
 if [[ -f /etc/os-release ]]; then
+  # shellcheck disable=SC1091
   . /etc/os-release
-  distro="$ID"
+  DISTRO_ID="${ID:-unknown}"
+  ID_LIKE_LOWER="$(echo "${ID_LIKE:-}" | tr '[:upper:]' '[:lower:]')"
 fi
 
-# Set default package manager command and packages list based on distro
-PM_INSTALL=""
-PKG_LIST=""
+PM=""
+INSTALL_CMD=""
+REFRESH_CMD=""
 
-case "$distro" in
-  debian|ubuntu|linuxmint|elementary|pop|zorin)
-    PM_INSTALL="apt-get"
-    # Update apt and install dependencies
-    PKG_LIST="nodejs npm curl git"
-    # Include Xvfb for potential headless use
-    PKG_LIST="$PKG_LIST xvfb xvfb-run"
+case "$DISTRO_ID" in
+  debian|ubuntu|raspbian|linuxmint|elementary|pop|zorin|neon|kali)
+    PM="apt-get"
+    REFRESH_CMD="apt-get update -y"
+    INSTALL_CMD="apt-get install -y"
     ;;
-  fedora|rhel|centos|rocky|almalinux)
-    PM_INSTALL="dnf"
-    PKG_LIST="nodejs npm curl git"
-    PKG_LIST="$PKG_LIST xorg-x11-server-Xvfb"
+  fedora|rhel|centos|rocky|almalinux|ol)
+    PM="dnf"
+    REFRESH_CMD="dnf -y makecache"
+    INSTALL_CMD="dnf -y install"
     ;;
-  arch|manjaro|endeavouros)
-    PM_INSTALL="pacman"
-    PKG_LIST="nodejs npm curl git"
-    PKG_LIST="$PKG_LIST xorg-server-xvfb"
+  arch|manjaro|endeavouros|arco*)
+    PM="pacman"
+    REFRESH_CMD="pacman -Sy --noconfirm"
+    INSTALL_CMD="pacman -S --noconfirm --needed"
     ;;
-  opensuse*|suse)
-    PM_INSTALL="zypper"
-    PKG_LIST="nodejs npm curl git"
-    PKG_LIST="$PKG_LIST xorg-x11-server-Xvfb"
+  opensuse*|suse|sles|leap|tumbleweed)
+    PM="zypper"
+    REFRESH_CMD="zypper --non-interactive refresh"
+    INSTALL_CMD="zypper --non-interactive install --no-recommends"
     ;;
   alpine)
-    PM_INSTALL="apk"
-    PKG_LIST="nodejs npm curl git"
-    PKG_LIST="$PKG_LIST xvfb xvfb-run"
+    PM="apk"
+    REFRESH_CMD="apk update"
+    INSTALL_CMD="apk add --no-cache"
     ;;
   gentoo)
-    PM_INSTALL="emerge"
-    PKG_LIST="nodejs npm curl git"
-    # Gentoo's Xvfb is part of xorg-server with USE=headless, assume user can install if needed
-    PKG_LIST="$PKG_LIST xorg-server"
+    PM="emerge"
+    REFRESH_CMD="true"
+    INSTALL_CMD="emerge --quiet --update --newuse"
     ;;
   *)
-    echo "Unsupported or unrecognized Linux distribution: $distro"
-    echo "Exiting. You may need to manually install: nodejs, npm, curl, git, nativefier."
-    exit 1
+    # Try ID_LIKE families
+    if [[ "$ID_LIKE_LOWER" == *debian* || "$ID_LIKE_LOWER" == *ubuntu* ]]; then
+      PM="apt-get"; REFRESH_CMD="apt-get update -y"; INSTALL_CMD="apt-get install -y"
+    elif [[ "$ID_LIKE_LOWER" == *rhel* || "$ID_LIKE_LOWER" == *fedora* || "$ID_LIKE_LOWER" == *centos* ]]; then
+      PM="dnf"; REFRESH_CMD="dnf -y makecache"; INSTALL_CMD="dnf -y install"
+    elif [[ "$ID_LIKE_LOWER" == *suse* ]]; then
+      PM="zypper"; REFRESH_CMD="zypper --non-interactive refresh"; INSTALL_CMD="zypper --non-interactive install --no-recommends"
+    elif [[ "$ID_LIKE_LOWER" == *arch* ]]; then
+      PM="pacman"; REFRESH_CMD="pacman -Sy --noconfirm"; INSTALL_CMD="pacman -S --noconfirm --needed"
+    else
+      die "Unsupported or unrecognized Linux distribution. Please install Node.js, npm, curl, git, and nativefier manually."
+    fi
     ;;
 esac
 
-# Use sudo for package installs if not already root
 SUDO=""
 if [[ $EUID -ne 0 ]]; then
   SUDO="sudo"
 fi
 
-print_boxed "Installing system dependencies..."
-if [[ "$PM_INSTALL" == "apt-get" ]]; then
-  $SUDO apt-get update -y
-fi
-# Install required packages (skip any that are already installed)
-for pkg in $PKG_LIST; do
-  if ! command -v ${pkg%% *} >/dev/null 2>&1; then   # check base command name
-    $SUDO $PM_INSTALL -y install $pkg || { echo "Error: Failed to install $pkg. Please install it manually and re-run the script."; exit 1; }
-  else
-    echo "Package '$pkg' is already installed; skipping."
-  fi
-done
+# =========================
+# Choose arch for Nativefier
+# =========================
+UNAME_M="$(uname -m)"
+N_ARCH="x64"
+case "$UNAME_M" in
+  x86_64|amd64) N_ARCH="x64" ;;
+  i386|i686)    N_ARCH="ia32" ;;
+  aarch64|arm64) N_ARCH="arm64" ;;
+  armv7l|armv7|armhf) N_ARCH="armv7l" ;;
+  mips64el)     N_ARCH="mips64el" ;;
+  *)            N_ARCH="x64" ;; # fallback
+esac
 
-# Ensure Node.js and npm are available
-if ! command -v node >/dev/null 2>&1; then
-  echo "Error: Node.js was not installed successfully. Exiting."
-  exit 1
-fi
-if ! command -v npm >/dev/null 2>&1; then
-  echo "Error: npm was not installed successfully. Exiting."
-  exit 1
-fi
+# =========================
+# Install deps
+# =========================
+box "Installing system dependencies..."
+# Refresh repos (where meaningful)
+$SUDO bash -lc "$REFRESH_CMD" || warn "Repo refresh failed (continuing anyway)."
 
-print_boxed "Installing Nativefier (npm)..."
+# Map packages per family
+DEPS_COMMON=(curl git nodejs npm)
+DEPS_XVFB=() # will add later if headless setup chosen, but include now as harmless
+case "$PM" in
+  apt-get)
+    DEPS_XVFB=(xvfb xvfb-run)
+    $SUDO $INSTALL_CMD "${DEPS_COMMON[@]}" || die "Failed to install base deps."
+    $SUDO $INSTALL_CMD "${DEPS_XVFB[@]}" || warn "Failed to install Xvfb helpers (non-fatal)."
+    ;;
+  dnf)
+    DEPS_XVFB=(xorg-x11-server-Xvfb)
+    $SUDO $INSTALL_CMD "${DEPS_COMMON[@]}" || die "Failed to install base deps."
+    $SUDO $INSTALL_CMD "${DEPS_XVFB[@]}" || warn "Failed to install Xvfb (non-fatal)."
+    ;;
+  pacman)
+    DEPS_XVFB=(xorg-server-xvfb)
+    $SUDO $INSTALL_CMD "${DEPS_COMMON[@]}" || die "Failed to install base deps."
+    $SUDO $INSTALL_CMD "${DEPS_XVFB[@]}" || warn "Failed to install Xvfb (non-fatal)."
+    ;;
+  zypper)
+    DEPS_XVFB=(xorg-x11-server-Xvfb)
+    $SUDO $INSTALL_CMD "${DEPS_COMMON[@]}" || die "Failed to install base deps."
+    $SUDO $INSTALL_CMD "${DEPS_XVFB[@]}" || warn "Failed to install Xvfb (non-fatal)."
+    ;;
+  apk)
+    DEPS_XVFB=(xvfb xvfb-run)
+    $SUDO $INSTALL_CMD "${DEPS_COMMON[@]}" || die "Failed to install base deps."
+    $SUDO $INSTALL_CMD "${DEPS_XVFB[@]}" || warn "Failed to install Xvfb (non-fatal)."
+    ;;
+  emerge)
+    # Gentoo users typically manage USE flags; attempt generic installs
+    $SUDO $INSTALL_CMD dev-vcs/git net-misc/curl net-libs/nodejs || warn "Install base deps manually on Gentoo if this fails."
+    # Xvfb provided by xorg-server with proper USE flags
+    ;;
+esac
+
+command -v node >/dev/null 2>&1 || die "Node.js not available after install."
+command -v npm  >/dev/null 2>&1 || die "npm not available after install."
+
+# =========================
+# Nativefier install
+# =========================
+box "Installing Nativefier (npm)..."
 if command -v nativefier >/dev/null 2>&1; then
-  echo "Nativefier is already installed globally; skipping."
+  ok "Nativefier already installed."
 else
-  $SUDO npm install -g nativefier || { echo "Error: Failed to install Nativefier via npm."; exit 1; }
+  $SUDO npm install -g nativefier || die "Failed to install Nativefier via npm."
 fi
 
-# Determine installation directory based on privileges
+# =========================
+# Build app with Nativefier
+# =========================
+APP_NAME="whatsapp-for-linux"
+TARGET_URL="https://web.whatsapp.com"
+
+# Install location
 if [[ $EUID -eq 0 ]]; then
   INSTALL_DIR="/opt/WhatsApp"
 else
   INSTALL_DIR="$HOME/.local/share/nativefier/WhatsApp"
 fi
-mkdir -p "$INSTALL_DIR"
+$SUDO mkdir -p "$INSTALL_DIR"
 
-print_boxed "Building WhatsApp desktop application with Nativefier..."
-# Use nativefier to create the app (output to a temp dir if not directly to INSTALL_DIR)
-BUILD_DIR="$(mktemp -d)"
-# Build the WhatsApp Web app
-nativefier --name "whatsapp-for-linux" --single-instance --tray "https://web.whatsapp.com" "$BUILD_DIR" >/dev/null 2>&1 || {
-  echo "Error: Nativefier failed to create the WhatsApp application."
-  rm -rf "$BUILD_DIR"
-  exit 1
-}
-# The build output directory name typically ends with '-linux-x64'
-APP_SUBDIR="$(find "$BUILD_DIR" -maxdepth 1 -type d -name "*-linux-x64" -print -quit)"
-if [[ -z "$APP_SUBDIR" ]]; then
-  # If not found, assume BUILD_DIR itself might be the app
-  APP_SUBDIR="$BUILD_DIR"
+box "Building WhatsApp desktop application with Nativefier..."
+BUILD_PARENT="$(mktemp -d)"
+# Use --out to control parent dir, Nativefier creates a subdir inside
+nativefier \
+  --name "$APP_NAME" \
+  --platform linux \
+  --arch "$N_ARCH" \
+  --single-instance \
+  --tray \
+  --disable-dev-tools \
+  --fast-quit \
+  --internal-urls ".*" \
+  "$TARGET_URL" \
+  --out "$BUILD_PARENT" \
+  || die "Nativefier build failed."
+
+# Find the created app directory: ${APP_NAME}-linux-<arch>*
+APP_DIR="$(find "$BUILD_PARENT" -maxdepth 1 -type d -name "${APP_NAME}-linux-*${N_ARCH}*" -print -quit)"
+# Some nativefier versions omit arch suffix ordering; fallback: any ${APP_NAME}-linux-*
+if [[ -z "${APP_DIR:-}" ]]; then
+  APP_DIR="$(find "$BUILD_PARENT" -maxdepth 1 -type d -name "${APP_NAME}-linux-*" -print -quit)"
 fi
+[[ -n "${APP_DIR:-}" ]] || die "Could not locate Nativefier output directory."
 
-# Move the app to the install directory
-# If INSTALL_DIR already contains an older installation, back it up
-if [[ -d "$INSTALL_DIR" && "$(ls -A "$INSTALL_DIR")" ]]; then
-  echo "Existing installation found in $INSTALL_DIR. Backing it up."
-  mv "$INSTALL_DIR" "${INSTALL_DIR}.bak_$(date +%Y%m%d%H%M%S)" || true
-  mkdir -p "$INSTALL_DIR"
+# Move into INSTALL_DIR (clean existing safely)
+if [[ -d "$INSTALL_DIR" && -n "$(ls -A "$INSTALL_DIR" 2>/dev/null || true)" ]]; then
+  TS="$(date +%Y%m%d%H%M%S)"
+  $SUDO mv "$INSTALL_DIR" "${INSTALL_DIR}.bak_${TS}" || true
+  $SUDO mkdir -p "$INSTALL_DIR"
 fi
-# Move new files in
-mv "$APP_SUBDIR"/* "$INSTALL_DIR"/ 2>/dev/null || cp -r "$APP_SUBDIR"/* "$INSTALL_DIR"/
-rm -rf "$BUILD_DIR"  # cleanup temp build directory
+$SUDO cp -a "$APP_DIR"/. "$INSTALL_DIR"/ || die "Failed to copy app into $INSTALL_DIR"
+rm -rf "$BUILD_PARENT"
 
-# Ensure the main executable has the expected name and is executable
-# (Nativefier names the binary after the app -- "whatsapp-for-linux")
-if [[ -f "$INSTALL_DIR/whatsapp-for-linux" ]]; then
-  chmod +x "$INSTALL_DIR/whatsapp-for-linux"
+# Ensure binary exists and is executable
+if [[ -f "$INSTALL_DIR/$APP_NAME" ]]; then
+  $SUDO chmod +x "$INSTALL_DIR/$APP_NAME"
 else
-  echo "Warning: Executable not found! Something went wrong with the build."
+  # Some builds name the binary without hyphens or with capital letters—normalize
+  BIN_CANDIDATE="$(find "$INSTALL_DIR" -maxdepth 1 -type f -perm -111 | head -n1 || true)"
+  [[ -n "$BIN_CANDIDATE" ]] || die "Executable not found in $INSTALL_DIR."
+  $SUDO mv "$BIN_CANDIDATE" "$INSTALL_DIR/$APP_NAME"
+  $SUDO chmod +x "$INSTALL_DIR/$APP_NAME"
 fi
 
-# If installed as root, add a symlink for easy command-line access
+# Symlink for system-wide CLI
 if [[ $EUID -eq 0 ]]; then
-  ln -sf "$INSTALL_DIR/whatsapp-for-linux" /usr/local/bin/whatsapp-for-linux
+  $SUDO ln -sf "$INSTALL_DIR/$APP_NAME" /usr/local/bin/$APP_NAME
+else
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$INSTALL_DIR/$APP_NAME" "$HOME/.local/bin/$APP_NAME"
+  # Add to PATH for current session if needed
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) :;;
+    *) export PATH="$HOME/.local/bin:$PATH";;
+  esac
 fi
 
-print_boxed "Creating desktop launcher entry..."
+# =========================
+# Desktop launcher
+# =========================
+box "Creating desktop launcher entry..."
 LAUNCHER_DIR="$HOME/.local/share/applications"
 mkdir -p "$LAUNCHER_DIR"
-DESKTOP_FILE="$LAUNCHER_DIR/whatsapp-for-linux.desktop"
-cat > "$DESKTOP_FILE" <<EOL
+DESKTOP_FILE="$LAUNCHER_DIR/${APP_NAME}.desktop"
+
+# Pick an icon if nativefier grabbed one; else leave a generic name
+ICON_PATH="$(find "$INSTALL_DIR" -maxdepth 2 -type f \( -name '*.png' -o -name '*.ico' \) | head -n1 || true)"
+if [[ -z "$ICON_PATH" ]]; then
+  ICON_PATH="whatsapp" # rely on system theme fallback
+fi
+
+cat > "$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Name=WhatsApp
-Comment=Unofficial WhatsApp Desktop client
-Exec=${INSTALL_DIR}/whatsapp-for-linux %u
-Icon=${INSTALL_DIR}/resources/app/icon.png
+Comment=Unofficial WhatsApp Web desktop app (Nativefier)
+Exec=${INSTALL_DIR}/${APP_NAME} %u
+Icon=${ICON_PATH}
 Terminal=false
 Type=Application
-Categories=Network;InstantMessaging;
-StartupWMClass=whatsapp-for-linux
-EOL
+Categories=Network;Chat;InstantMessaging;
+StartupWMClass=${APP_NAME}
+EOF
 
-# Refresh desktop database (if available) to register the new app (optional)
-if command -v update-desktop-database >/dev/null 2>&1; then
-  update-desktop-database "$LAUNCHER_DIR" >/dev/null 2>&1 || true
-fi
+# Refresh desktop entries if tool available
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$LAUNCHER_DIR" || true
 
-# Prompt for autostart
-echo ""
-read -rp "Do you want WhatsApp to start automatically on login? [y/N]: " AUTOSTART_CHOICE
-if [[ "$AUTOSTART_CHOICE" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+# =========================
+# Autostart prompt
+# =========================
+echo
+read -r -p "Enable autostart so WhatsApp launches on login? [y/N]: " AUTOSTART
+if [[ "${AUTOSTART,,}" == "y" || "${AUTOSTART,,}" == "yes" ]]; then
   AUTOSTART_DIR="$HOME/.config/autostart"
   mkdir -p "$AUTOSTART_DIR"
-  cp "$DESKTOP_FILE" "$AUTOSTART_DIR/"
-  echo "Autostart enabled. WhatsApp will launch at login."
+  cp -f "$DESKTOP_FILE" "$AUTOSTART_DIR/${APP_NAME}.desktop"
+  # Ensure GNOME honors it
+  if ! grep -q "^X-GNOME-Autostart-enabled=" "$AUTOSTART_DIR/${APP_NAME}.desktop" 2>/dev/null; then
+    echo "X-GNOME-Autostart-enabled=true" >> "$AUTOSTART_DIR/${APP_NAME}.desktop"
+  fi
+  ok "Autostart enabled."
 else
-  echo "Autostart not enabled. You can still launch WhatsApp from your applications menu or via the 'whatsapp-for-linux' command."
+  warn "Autostart not enabled."
 fi
 
-# Headless mode setup (if no GUI detected)
-if [[ -z "$DISPLAY" && -z "$WAYLAND_DISPLAY" ]]; then
-  echo ""
-  echo "It appears you are running this script in a non-GUI environment (no DISPLAY detected)."
-  read -rp "Would you like to set up WhatsApp to run headlessly in the background (using Xvfb)? [y/N]: " HEADLESS_CHOICE
-  if [[ "$HEADLESS_CHOICE" =~ ^([yY][eE][sS]|[yY])$ ]]; then
-    print_boxed "Configuring headless WhatsApp service..."
-    # Ensure Xvfb is installed (it should be, from earlier steps, but double-check)
-    if ! command -v Xvfb >/dev/null 2>&1; then
-      echo "Xvfb not found. Attempting to install Xvfb..."
-      case "$distro" in
-        debian|ubuntu|linuxmint|elementary|pop|zorin)
-          $SUDO apt-get -y install xvfb xvfb-run ;;
-        fedora|rhel|centos|rocky|almalinux)
-          $SUDO dnf -y install xorg-x11-server-Xvfb ;;
-        arch|manjaro|endeavouros)
-          $SUDO pacman -S --noconfirm xorg-server-xvfb ;;
-        opensuse*|suse)
-          $SUDO zypper install -y xorg-x11-server-Xvfb ;;
-        alpine)
-          $SUDO apk add --no-cache xvfb xvfb-run ;;
-        gentoo)
-          $SUDO emerge --update --newuse xorg-server ;;
-      esac
-    fi
-    # Create systemd service file
-    SERVICE_FILE="/etc/systemd/system/whatsapp-for-linux.service"
-    $SUDO bash -c "cat > $SERVICE_FILE" <<EOL2
+# =========================
+# Headless offer if no GUI
+# =========================
+if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
+  echo
+  warn "No graphical display detected."
+  read -r -p "Configure headless mode (Xvfb + systemd) to keep WhatsApp running in background? [y/N]: " HEADLESS
+  if [[ "${HEADLESS,,}" == "y" || "${HEADLESS,,}" == "yes" ]]; then
+    box "Configuring headless service (Xvfb)..."
+    # Ensure Xvfb present (second attempt per family)
+    case "$PM" in
+      apt-get) $SUDO $INSTALL_CMD xvfb xvfb-run || true ;;
+      dnf)     $SUDO $INSTALL_CMD xorg-x11-server-Xvfb || true ;;
+      pacman)  $SUDO $INSTALL_CMD xorg-server-xvfb || true ;;
+      zypper)  $SUDO $INSTALL_CMD xorg-x11-server-Xvfb || true ;;
+      apk)     $SUDO $INSTALL_CMD xvfb xvfb-run || true ;;
+      emerge)  : ;; # assume managed by admin
+    esac
+
+    SERVICE_PATH="/etc/systemd/system/${APP_NAME}.service"
+    $SUDO bash -c "cat > '$SERVICE_PATH'" <<'EOSVC'
 [Unit]
 Description=WhatsApp for Linux (Headless)
 After=network.target
 
 [Service]
 Type=simple
-User=$USER
+User=__USER__
 Environment=DISPLAY=:99
-ExecStart=/usr/bin/xvfb-run -a -s "-screen 0 1280x720x24" ${INSTALL_DIR}/whatsapp-for-linux
+ExecStart=/usr/bin/xvfb-run -a -s "-screen 0 1280x720x24" __INSTALL__/__APPNAME__
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
-EOL2
+EOSVC
+    # Replace tokens
+    $SUDO sed -i "s|__USER__|$USER|g" "$SERVICE_PATH"
+    $SUDO sed -i "s|__INSTALL__|$INSTALL_DIR|g" "$SERVICE_PATH"
+    $SUDO sed -i "s|__APPNAME__|$APP_NAME|g" "$SERVICE_PATH"
+
     $SUDO systemctl daemon-reload
-    $SUDO systemctl enable whatsapp-for-linux.service
-    $SUDO systemctl start whatsapp-for-linux.service
-    echo "Headless service installed. WhatsApp is now running in the background on a virtual display."
-    echo "You can check the service status with: sudo systemctl status whatsapp-for-linux"
+    $SUDO systemctl enable --now "$APP_NAME.service" || warn "Could not start headless service; check logs."
+    ok "Headless service installed. Check: sudo systemctl status ${APP_NAME}"
+    warn "Remember: perform initial QR login once in a GUI (or via VNC to the Xvfb display)."
   fi
 fi
 
-# Final message with donation link
-print_boxed "Installation complete!"
-echo -e "\e[1mThank you for installing WhatsApp for Linux.\e[0m"
-echo -e "If you find this application useful, please consider supporting the developer at: \e[1mhttps://paypal.me/spontaneocus\e[0m"
-echo "Enjoy using WhatsApp on Linux! 🎉"
+# =========================
+# Done
+# =========================
+box "Installation complete!"
+echo -e "Launch via: $(bold $APP_NAME)  or find 'WhatsApp' in your app menu."
+echo -e "If you find this useful, consider supporting: $(bold https://paypal.me/spontaneocus)"
