@@ -1,5 +1,6 @@
-
 #!/usr/bin/env bash
+#Script Created by Spontaneocus (aka Martin J Keatings)
+
 # WhatsApp Web Nativefier Installer Script
 # Supports top Linux distributions (Ubuntu/Debian, Fedora/RHEL, Arch/Manjaro, openSUSE, etc.):contentReference[oaicite:0]{index=0}.
 # This script installs Node.js (via appropriate package manager/repository):contentReference[oaicite:1]{index=1}, Nativefier, and sets up WhatsApp Web as a desktop app.
