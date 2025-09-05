@@ -35,35 +35,40 @@ In short: it feels like a native app while being just WhatsApp Web under the hoo
 
 ## 📥 Installation
 
-Run the following one-liner for your distribution. Replace `<user>/<repo>` with this repository path:  
-martinkeat/Whatsapp-For-Linux
+## Run the following one-liner for your distribution.
 
+
+### Debian / Ubuntu / Raspberry Pi OS / Linux Mint:
 ```
-Debian / Ubuntu / Raspberry Pi OS / Linux Mint:
 curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-debian.sh | bash
 ```
+
+### Fedora / RHEL / CentOS / Rocky / AlmaLinux:
 ```
-Fedora / RHEL / CentOS / Rocky / AlmaLinux:
 curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-fedora.sh | bash
 ```
+
+### Arch / Manjaro / EndeavourOS:
 ```
-Arch / Manjaro / EndeavourOS:
 curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-arch.sh | bash
 ```
+
+### openSUSE / SUSE Linux Enterprise:
 ```
-openSUSE / SUSE Linux Enterprise:
 curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-opensuse.sh | bash
 ```
+
+### Alpine Linux:
 ```
-Alpine Linux:
 curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-alpine.sh | bash
 ```
+
+### Gentoo Linux:
 ```
-Gentoo Linux:
 curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-gentoo.sh | bash
 ```
 
-After install, look for WhatsApp in your app menu. First run requires scanning the QR code with your phone.
+### After install, look for WhatsApp in your app menu. First run requires scanning the QR code with your phone.
 
 ---
 
