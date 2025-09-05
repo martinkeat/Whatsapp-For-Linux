@@ -38,23 +38,30 @@ In short: it feels like a native app while being just WhatsApp Web under the hoo
 Run the following one-liner for your distribution. Replace `<user>/<repo>` with this repository path:  
 martinkeat/Whatsapp-For-Linux
 
+```
 Debian / Ubuntu / Raspberry Pi OS / Linux Mint:
 curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-debian.sh | bash
-
+```
+```
 Fedora / RHEL / CentOS / Rocky / AlmaLinux:
 curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-fedora.sh | bash
-
+```
+```
 Arch / Manjaro / EndeavourOS:
 curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-arch.sh | bash
-
+```
+```
 openSUSE / SUSE Linux Enterprise:
 curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-opensuse.sh | bash
-
+```
+```
 Alpine Linux:
 curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-alpine.sh | bash
-
+```
+```
 Gentoo Linux:
 curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-gentoo.sh | bash
+```
 
 After install, look for WhatsApp in your app menu. First run requires scanning the QR code with your phone.
 
@@ -68,7 +75,7 @@ Example with xvfb-run:
 xvfb-run -a whatsapp-for-linux
 
 Or create a systemd service at /etc/systemd/system/whatsapp.service:
-
+```
 [Unit]
 Description=WhatsApp for Linux (headless)
 After=network.target
@@ -82,7 +89,7 @@ Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
-
+```
 Note: You must perform the initial QR code login in a GUI environment (or by viewing the Xvfb display with VNC/screenshot) before running headless.
 
 ---
