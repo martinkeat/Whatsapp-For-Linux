@@ -17,3 +17,7 @@ It is pretty simple:
 **
 Debian based machines i.e Ubuntu, Debian, Pi OS et al:**
 
+```
+curl -fsSL https://raw.githubusercontent.com/<user>/<repo>/main/install-whatsapp-nativefier.sh | bash
+}
+```
