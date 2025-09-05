@@ -31,42 +31,18 @@ Why use this instead of just a browser shortcut?
 
 In short: it feels like a native app while being just WhatsApp Web under the hood.
 
+## Pre-requisite:
+
+Remember to ensure you have curl installed on your system. 
+
 ---
 
 ## 📥 Installation
 
-## Run the following one-liner for your distribution.
+## Run the following one-liner on any supported Linux distribution.
+The script will automatically detect your distro and install the necessary dependencies.
 
-
-### Debian / Ubuntu / Raspberry Pi OS / Linux Mint:
-```
-curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-debian.sh | bash
-```
-
-### Fedora / RHEL / CentOS / Rocky / AlmaLinux:
-```
-curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-fedora.sh | bash
-```
-
-### Arch / Manjaro / EndeavourOS:
-```
-curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-arch.sh | bash
-```
-
-### openSUSE / SUSE Linux Enterprise:
-```
-curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-opensuse.sh | bash
-```
-
-### Alpine Linux:
-```
-curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-alpine.sh | bash
-```
-
-### Gentoo Linux:
-```
-curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-gentoo.sh | bash
-```
+curl -fsSL https://raw.githubusercontent.com/martinkeat/Whatsapp-For-Linux/main/install-whatsapp-nativefier.sh | bash
 
 ### After install, look for WhatsApp in your app menu. First run requires scanning the QR code with your phone.
 
